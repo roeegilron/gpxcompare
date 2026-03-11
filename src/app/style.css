@@ -26,6 +26,11 @@ body {
   grid-column: 1 / -1;
 }
 
+.chart-panel {
+  grid-column: 1 / -1;
+  min-height: 360px;
+}
+
 .map-controls {
   display: flex;
   flex-wrap: wrap;
@@ -46,10 +51,40 @@ body {
   border: 1px solid #d1d5db;
 }
 
+#gap-chart {
+  width: 100%;
+  height: 300px;
+  display: block;
+  background: #ffffff;
+}
+
+#chart-caption {
+  margin-top: 6px;
+  color: #374151;
+}
+
 .rider-card {
   border-top: 1px solid #e5e7eb;
   padding-top: 8px;
   margin-top: 8px;
+}
+
+.rider-edit-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.rider-edit-row label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.rider-edit-row input[type="text"] {
+  width: 130px;
 }
 
 .trim-controls {
@@ -61,6 +96,19 @@ body {
 
 .trim-controls button {
   font-size: 12px;
+}
+
+.compare-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.compare-grid th,
+.compare-grid td {
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  padding: 6px 4px;
+  font-size: 13px;
 }
 
 input[type="file"] {

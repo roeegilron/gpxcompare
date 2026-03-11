@@ -52,7 +52,7 @@ function stationAtDistance(points: StationPoint[], cumulative: number[], distanc
   };
 }
 
-export function buildConsensusRoute(inputs: ConsensusInput[], stationCount = 500): ReferenceRoute {
+export function buildConsensusRoute(inputs: ConsensusInput[], stationSpacingM = 0.5): ReferenceRoute {
   if (inputs.length === 0) {
     throw new Error("No tracks available for consensus route");
   }
@@ -64,7 +64,6 @@ export function buildConsensusRoute(inputs: ConsensusInput[], stationCount = 500
     throw new Error("No trimmed tracks with enough points for consensus route");
   }
 
-  const stationPoints = Math.max(2, stationCount);
   const sampledByTrack = trimmed.map((points) => {
     const synthetic = points.map((point, idx) => ({
       riderId: "consensus",
@@ -76,6 +75,12 @@ export function buildConsensusRoute(inputs: ConsensusInput[], stationCount = 500
     const totalDistance = cumulative[cumulative.length - 1] ?? 0;
     return { points, cumulative, totalDistance };
   });
+
+  const longestDistance = sampledByTrack.reduce((max, item) => Math.max(max, item.totalDistance), 0);
+  const stationPoints = Math.max(
+    2,
+    Math.min(20_000, Math.floor(longestDistance / Math.max(0.1, stationSpacingM)) + 1)
+  );
 
   const coordinates: [number, number][] = [];
   for (let i = 0; i < stationPoints; i += 1) {

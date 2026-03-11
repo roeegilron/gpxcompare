@@ -3,29 +3,37 @@ import { appStore } from "../app/store";
 import type { RiderTrack, RiderTrim } from "../types/gpx";
 import type { ReferenceRoute } from "../types/route";
 
-const riderColors = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#a855f7"];
-
 type PointMode = "none" | "all" | "sampled";
 type BaseLayerKey = "road" | "topo" | "satellite" | "dark";
+const DEFAULT_CENTER_94930: [number, number] = [37.9735, -122.561];
+const DEFAULT_ZOOM_94930 = 14;
 
 function buildBaseLayers(): Record<BaseLayerKey, L.TileLayer> {
   return {
     road: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors"
+      attribution: "&copy; OpenStreetMap contributors",
+      maxNativeZoom: 19,
+      maxZoom: 24
     }),
     topo: L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenTopoMap contributors"
+      attribution: "&copy; OpenTopoMap contributors",
+      maxNativeZoom: 17,
+      maxZoom: 24
     }),
     satellite: L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       {
-        attribution: "Tiles &copy; Esri"
+        attribution: "Tiles &copy; Esri",
+        maxNativeZoom: 19,
+        maxZoom: 24
       }
     ),
     dark: L.tileLayer(
       "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
       {
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+        maxNativeZoom: 20,
+        maxZoom: 24
       }
     )
   };
@@ -45,6 +53,7 @@ function markerStep(mode: PointMode): number {
 function renderTrackLayers(
   tracks: RiderTrack[],
   trims: Record<string, RiderTrim>,
+  riderSettings: Record<string, { name: string; color: string }>,
   referenceRoute: ReferenceRoute | undefined,
   selectedPoint: { riderId: string; pointIndex: number } | undefined,
   map: L.Map,
@@ -67,8 +76,10 @@ function renderTrackLayers(
     routeLatLngs.forEach((latLng) => bounds.extend(latLng));
   }
 
-  tracks.forEach((track, trackIndex) => {
-    const color = riderColors[trackIndex % riderColors.length] ?? "#111827";
+  tracks.forEach((track) => {
+    const settings = riderSettings[track.riderId];
+    const riderName = settings?.name ?? track.riderId;
+    const color = settings?.color ?? "#3b82f6";
     const latLngs = track.points.map((p) => L.latLng(p.lat, p.lon));
     latLngs.forEach((latLng) => bounds.extend(latLng));
 
@@ -88,7 +99,7 @@ function renderTrackLayers(
           fillColor: "#ffffff",
           fillOpacity: 1
         })
-          .bindTooltip(`${track.riderId} trim start #${trim.startPointIndex}`)
+          .bindTooltip(`${riderName} trim start #${trim.startPointIndex}`)
           .addTo(trackLayer);
       }
       if (endPoint) {
@@ -99,7 +110,7 @@ function renderTrackLayers(
           fillColor: color,
           fillOpacity: 1
         })
-          .bindTooltip(`${track.riderId} trim end #${trim.endPointIndex}`)
+          .bindTooltip(`${riderName} trim end #${trim.endPointIndex}`)
           .addTo(trackLayer);
       }
     }
@@ -120,13 +131,17 @@ function renderTrackLayers(
         color,
         fillColor: color,
         fillOpacity: 0.8,
-        weight: 1
+        weight:
+          selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === point.pointIndex
+            ? 3
+            : 1
       });
       marker.bindTooltip(
-        `${track.riderId} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
+        `${riderName} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
       );
       marker.on("click", () => {
         appStore.getState().setSelectedPoint({ riderId: track.riderId, pointIndex: point.pointIndex });
+        appStore.getState().applyPointSelectionByPhase(track.riderId, point.pointIndex);
         window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
       });
       marker.addTo(pointLayer);
@@ -161,8 +176,8 @@ export function initMap(container: HTMLElement): void {
         Point mode
         <select id="point-mode">
           <option value="none">None</option>
-          <option value="sampled" selected>Sampled (every 20)</option>
-          <option value="all">All points</option>
+          <option value="sampled">Sampled (every 20)</option>
+          <option value="all" selected>All points</option>
         </select>
       </label>
     </div>
@@ -178,7 +193,10 @@ export function initMap(container: HTMLElement): void {
     throw new Error("Map controls failed to initialize");
   }
 
-  const map = L.map(canvas, { zoomControl: true }).setView([39.7392, -104.9903], 10);
+  const map = L.map(canvas, { zoomControl: true, maxZoom: 24 }).setView(
+    DEFAULT_CENTER_94930,
+    DEFAULT_ZOOM_94930
+  );
   const baseLayers = buildBaseLayers();
   const resolveBaseLayer = (value: string): L.TileLayer => {
     switch (value) {
@@ -202,12 +220,13 @@ export function initMap(container: HTMLElement): void {
   const routeLayer = L.layerGroup().addTo(map);
 
   const rerender = (): void => {
-    const { tracks, trims, referenceRoute, selectedPoint } = appStore.getState();
+    const { tracks, trims, riderSettings, referenceRoute, selectedPoint } = appStore.getState();
     const showTracks = showTracksInput.checked;
-    const mode = (pointModeInput.value as PointMode) ?? "sampled";
+    const mode = (pointModeInput.value as PointMode) ?? "all";
     renderTrackLayers(
       tracks,
       trims,
+      riderSettings,
       referenceRoute,
       selectedPoint,
       map,

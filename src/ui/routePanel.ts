@@ -1,5 +1,6 @@
 import { appStore } from "../app/store";
 import { buildConsensusRoute } from "../domain/consensusRoute";
+import { buildComparisonDataset, leaderRiderId } from "../domain/comparison";
 import type { RiderTrack, RiderTrim } from "../types/gpx";
 
 export function createRoutePanel(container: HTMLElement): void {
@@ -7,41 +8,93 @@ export function createRoutePanel(container: HTMLElement): void {
   panel.className = "panel";
   panel.innerHTML = `
     <h2>Reference Route</h2>
-    <p>Build a consensus route from each rider's trimmed start/end segment.</p>
-    <button id="build-consensus" type="button">Build consensus route from trims</button>
+    <p>Workflow: select start on every included rider, then end on every included rider, then build route.</p>
+    <div class="trim-controls">
+      <button id="phase-start" type="button">1) Select starts</button>
+      <button id="phase-end" type="button">2) Select ends</button>
+    </div>
+    <button id="build-consensus" type="button">3) Build consensus route (0.5m)</button>
     <button id="clear-route" type="button">Clear route</button>
+    <label>
+      Compare to rider
+      <select id="compare-rider"></select>
+    </label>
+    <div id="selection-status"></div>
     <div id="route-status"></div>
   `;
   container.append(panel);
 
   const buildBtn = panel.querySelector<HTMLButtonElement>("#build-consensus");
   const clearBtn = panel.querySelector<HTMLButtonElement>("#clear-route");
+  const phaseStartBtn = panel.querySelector<HTMLButtonElement>("#phase-start");
+  const phaseEndBtn = panel.querySelector<HTMLButtonElement>("#phase-end");
+  const compareSelect = panel.querySelector<HTMLSelectElement>("#compare-rider");
+  const selectionStatus = panel.querySelector<HTMLDivElement>("#selection-status");
   const status = panel.querySelector<HTMLDivElement>("#route-status");
-  if (!buildBtn || !clearBtn || !status) {
+  if (!buildBtn || !clearBtn || !status || !phaseStartBtn || !phaseEndBtn || !compareSelect || !selectionStatus) {
     throw new Error("Route panel failed to initialize");
   }
 
   const render = (): void => {
-    const { referenceRoute } = appStore.getState();
+    const { referenceRoute, tracks, riderSelection, includeInComparison, selectionPhase, compareToRiderId } =
+      appStore.getState();
+    const includedTracks = tracks.filter((track) => includeInComparison[track.riderId]);
+    const allStarts =
+      includedTracks.length > 0 &&
+      includedTracks.every((track) => riderSelection[track.riderId]?.startSelected === true);
+    const allEnds =
+      includedTracks.length > 0 &&
+      includedTracks.every((track) => riderSelection[track.riderId]?.endSelected === true);
+
+    phaseStartBtn.disabled = selectionPhase === "built";
+    phaseEndBtn.disabled = !allStarts || selectionPhase === "built";
+    buildBtn.disabled = !(allStarts && allEnds);
+
+    compareSelect.innerHTML = includedTracks
+      .map((track) => {
+        const riderName = appStore.getState().riderSettings[track.riderId]?.name ?? track.riderId;
+        const selected = (compareToRiderId ?? "") === track.riderId ? "selected" : "";
+        return `<option value="${track.riderId}" ${selected}>${riderName}</option>`;
+      })
+      .join("");
+
+    selectionStatus.innerHTML = includedTracks
+      .map((track) => {
+        const riderName = appStore.getState().riderSettings[track.riderId]?.name ?? track.riderId;
+        const rider = riderSelection[track.riderId];
+        return `<div>${riderName}: start ${rider?.startSelected ? "OK" : "missing"}, end ${rider?.endSelected ? "OK" : "missing"}</div>`;
+      })
+      .join("");
+
     if (!referenceRoute) {
-      status.textContent = "No reference route yet.";
+      status.textContent = `No reference route yet. Phase: ${selectionPhase}.`;
       return;
     }
-    status.textContent = `Route points: ${referenceRoute.coordinates.length}. Source: ${referenceRoute.source}.`;
+    status.textContent = `Route points: ${referenceRoute.coordinates.length}. Source: ${referenceRoute.source}. Phase: ${selectionPhase}.`;
   };
 
   buildBtn.addEventListener("click", () => {
     try {
-      const { tracks, trims } = appStore.getState();
+      const { tracks, trims, includeInComparison } = appStore.getState();
       const inputs = tracks.reduce<Array<{ track: RiderTrack; trim: RiderTrim }>>((acc, track) => {
         const trim = trims[track.riderId];
-        if (trim) {
+        if (trim && includeInComparison[track.riderId]) {
           acc.push({ track, trim });
         }
         return acc;
       }, []);
-      const route = buildConsensusRoute(inputs);
-      appStore.getState().setReferenceRoute(route);
+      const route = buildConsensusRoute(inputs, 0.5);
+      const includedIds = tracks.filter((track) => includeInComparison[track.riderId]).map((track) => track.riderId);
+      appStore.getState().setReferenceRoute(route, true);
+      if (includedIds.length > 0) {
+        const dataset = buildComparisonDataset(
+          tracks.filter((track) => includeInComparison[track.riderId]),
+          trims,
+          route
+        );
+        const leaderId = leaderRiderId(dataset, includedIds);
+        appStore.getState().setCompareToRider(leaderId ?? includedIds[0]);
+      }
       window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : "Failed to build reference route.";
@@ -49,7 +102,19 @@ export function createRoutePanel(container: HTMLElement): void {
   });
 
   clearBtn.addEventListener("click", () => {
-    appStore.getState().setReferenceRoute(undefined);
+    appStore.getState().setReferenceRoute(undefined, false);
+    window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+  });
+  phaseStartBtn.addEventListener("click", () => {
+    appStore.getState().setSelectionPhase("select_start");
+    window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+  });
+  phaseEndBtn.addEventListener("click", () => {
+    appStore.getState().setSelectionPhase("select_end");
+    window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+  });
+  compareSelect.addEventListener("change", () => {
+    appStore.getState().setCompareToRider(compareSelect.value);
     window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
   });
 
