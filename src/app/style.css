@@ -1,0 +1,63 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #111827;
+  background: #f3f4f6;
+}
+
+body {
+  margin: 0;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.panel {
+  background: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+}
+
+.map-panel {
+  grid-column: 1 / -1;
+}
+
+.map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.map-controls label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#map-canvas {
+  height: 420px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+}
+
+.rider-card {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+input[type="file"] {
+  display: block;
+  margin-bottom: 8px;
+}
+
+#upload-error {
+  color: #b91c1c;
+  min-height: 1.2em;
+}
