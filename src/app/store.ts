@@ -224,13 +224,13 @@ export const appStore = createStore<AppState>((set) => ({
     set((state) => ({
       startPin,
       routeNeedsRebuild: state.referenceRoute ? true : state.routeNeedsRebuild,
-      selectionPhase: state.selectionPhase === "built" ? "ready_to_build" : state.selectionPhase
+      selectionPhase: state.selectionPhase
     })),
   setEndPin: (endPin) =>
     set((state) => ({
       endPin,
       routeNeedsRebuild: state.referenceRoute ? true : state.routeNeedsRebuild,
-      selectionPhase: state.selectionPhase === "built" ? "ready_to_build" : state.selectionPhase
+      selectionPhase: state.selectionPhase
     })),
   applyPinToIncludedRiders: (phase) =>
     set((state) => {
@@ -316,7 +316,7 @@ export const appStore = createStore<AppState>((set) => ({
           [riderId]: { ...(state.riderSelection[riderId] ?? { endSelected: false }), startSelected: true }
         },
         routeNeedsRebuild: state.referenceRoute ? true : state.routeNeedsRebuild,
-        selectionPhase: state.selectionPhase === "built" ? "ready_to_build" : state.selectionPhase
+        selectionPhase: state.selectionPhase
       };
     }),
   setTrimEnd: (riderId, pointIndex) =>
@@ -344,7 +344,7 @@ export const appStore = createStore<AppState>((set) => ({
           [riderId]: { ...(state.riderSelection[riderId] ?? { startSelected: false }), endSelected: true }
         },
         routeNeedsRebuild: state.referenceRoute ? true : state.routeNeedsRebuild,
-        selectionPhase: state.selectionPhase === "built" ? "ready_to_build" : state.selectionPhase
+        selectionPhase: state.selectionPhase
       };
     }),
   nudgeTrimStart: (riderId, delta) =>
@@ -364,7 +364,7 @@ export const appStore = createStore<AppState>((set) => ({
           }
         },
         routeNeedsRebuild: state.referenceRoute ? true : state.routeNeedsRebuild,
-        selectionPhase: state.selectionPhase === "built" ? "ready_to_build" : state.selectionPhase
+        selectionPhase: state.selectionPhase
       };
     }),
   nudgeTrimEnd: (riderId, delta) =>
@@ -386,7 +386,7 @@ export const appStore = createStore<AppState>((set) => ({
           }
         },
         routeNeedsRebuild: state.referenceRoute ? true : state.routeNeedsRebuild,
-        selectionPhase: state.selectionPhase === "built" ? "ready_to_build" : state.selectionPhase
+        selectionPhase: state.selectionPhase
       };
     }),
   setSelectedPoint: (selectedPoint) => set({ selectedPoint }),

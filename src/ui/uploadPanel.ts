@@ -30,7 +30,7 @@ function uniqueRiderId(fileName: string, taken: Set<string>): string {
 
 export function createUploadPanel(container: HTMLElement): void {
   const panel = document.createElement("section");
-  panel.className = "panel";
+  panel.className = "panel upload-panel";
   panel.innerHTML = `
     <h2>Upload GPX files</h2>
     <p>Upload up to 5 riders. This MVP parses every raw trackpoint.</p>

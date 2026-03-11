@@ -1,12 +1,21 @@
 import { appStore } from "../app/store";
 import { buildComparisonDataset } from "../domain/comparison";
 
-function formatMs(value?: number): string {
+type TimeFormat = "seconds" | "clock";
+
+function formatMs(value: number | undefined, mode: TimeFormat): string {
   if (value === undefined) {
     return "--";
   }
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${(value / 1000).toFixed(1)}s`;
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  if (mode === "seconds") {
+    return `${sign}${(abs / 1000).toFixed(3)}s`;
+  }
+  const totalSeconds = abs / 1000;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds - minutes * 60;
+  return `${sign}${minutes}:${seconds.toFixed(3).padStart(6, "0")}`;
 }
 
 function elapsedAtDistance(series: Array<number | undefined>, idx: number): number | undefined {
@@ -47,15 +56,23 @@ function speedAtIndexMps(
 
 export function createCompareTable(container: HTMLElement): void {
   const panel = document.createElement("section");
-  panel.className = "panel";
+  panel.className = "panel compare-panel";
   panel.innerHTML = `
     <h2>Comparison Table</h2>
+    <div class="compare-format-row">
+      <label>Time format</label>
+      <button id="format-clock" type="button">mm:ss.fff</button>
+      <button id="format-seconds" type="button">seconds</button>
+    </div>
     <div id="compare-table"></div>
   `;
   container.append(panel);
 
+  let timeFormat: TimeFormat = "clock";
+  const formatClockBtn = panel.querySelector<HTMLButtonElement>("#format-clock");
+  const formatSecondsBtn = panel.querySelector<HTMLButtonElement>("#format-seconds");
   const root = panel.querySelector<HTMLDivElement>("#compare-table");
-  if (!root) {
+  if (!root || !formatClockBtn || !formatSecondsBtn) {
     throw new Error("Comparison table failed to initialize");
   }
 
@@ -82,7 +99,7 @@ export function createCompareTable(container: HTMLElement): void {
     const baseElapsed = elapsedAtDistance(baseSeries, fractionIdx);
     const baseSpeed = speedAtIndexMps(fractions, baseData.totalDistanceM, baseSeries, fractionIdx);
 
-    const rows = included
+    const rowsData = included
       .map((track) => {
         const settings = riderSettings[track.riderId];
         const riderData = dataset.byRider[track.riderId];
@@ -95,28 +112,75 @@ export function createCompareTable(container: HTMLElement): void {
         const speedDelta =
           speed !== undefined && baseSpeed !== undefined ? speed - baseSpeed : undefined;
         const marker = track.riderId === compareToRiderId ? "(base)" : "";
-        return `
+        return {
+          riderId: track.riderId,
+          elapsed,
+          gap,
+          speedDelta,
+          marker,
+          color: settings?.color ?? "#3b82f6",
+          name: settings?.name ?? track.riderId
+        };
+      })
+      .sort((a, b) => {
+        if (a.elapsed === undefined && b.elapsed === undefined) {
+          return 0;
+        }
+        if (a.elapsed === undefined) {
+          return 1;
+        }
+        if (b.elapsed === undefined) {
+          return -1;
+        }
+        return a.elapsed - b.elapsed;
+      });
+
+    const rows = rowsData
+      .map((row) => `
           <tr>
-            <td><span style="color:${settings?.color ?? "#3b82f6"}">●</span> ${settings?.name ?? track.riderId} ${marker}</td>
-            <td>${elapsed === undefined ? "--" : `${(elapsed / 1000).toFixed(1)}s`}</td>
-            <td>${formatMs(gap)}</td>
-            <td>${speedDelta === undefined ? "--" : `${speedDelta >= 0 ? "+" : ""}${speedDelta.toFixed(2)} m/s`}</td>
+            <td><span style="color:${row.color}">●</span> ${row.name} ${row.marker}</td>
+            <td>${formatMs(row.elapsed, timeFormat)}</td>
+            <td>${formatMs(row.gap, timeFormat)}</td>
+            <td>${row.speedDelta === undefined ? "--" : `${row.speedDelta >= 0 ? "+" : ""}${row.speedDelta.toFixed(2)} m/s`}</td>
             <td>${((fractions[fractionIdx] ?? 0) * 100).toFixed(1)}%</td>
           </tr>
-        `;
+        `)
+      .join("");
+
+    const totals = included
+      .map((track) => {
+        const settings = riderSettings[track.riderId];
+        const total = dataset.byRider[track.riderId]?.totalElapsedMs;
+        return `<div><span style="color:${settings?.color ?? "#3b82f6"}">●</span> ${settings?.name ?? track.riderId}: ${formatMs(total, timeFormat)}</div>`;
       })
       .join("");
 
+    formatClockBtn.disabled = timeFormat === "clock";
+    formatSecondsBtn.disabled = timeFormat === "seconds";
+
+    const timeUnitLabel = timeFormat === "clock" ? "mm:ss.fff" : "seconds";
     root.innerHTML = `
+      <div class="compare-totals">
+        <strong>Total segment time (${timeUnitLabel})</strong>
+        ${totals}
+      </div>
       <table class="compare-grid">
         <thead>
-          <tr><th>Athlete</th><th>Elapsed</th><th>Gap</th><th>Speed Δ</th><th>Progress</th></tr>
+          <tr><th>Athlete</th><th>Elapsed (${timeUnitLabel})</th><th>Gap (${timeUnitLabel})</th><th>Speed Δ</th><th>Progress</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     `;
   };
 
+  formatClockBtn.addEventListener("click", () => {
+    timeFormat = "clock";
+    render();
+  });
+  formatSecondsBtn.addEventListener("click", () => {
+    timeFormat = "seconds";
+    render();
+  });
   window.addEventListener("gpxcompare:state-changed", render);
   render();
 }

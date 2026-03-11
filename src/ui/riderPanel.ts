@@ -19,7 +19,7 @@ function formatSegmentDurationMs(startMs?: number, endMs?: number): string {
 
 export function createRiderPanel(container: HTMLElement): void {
   const panel = document.createElement("section");
-  panel.className = "panel";
+  panel.className = "panel riders-panel";
   panel.innerHTML = `<h2>Riders</h2><div id="rider-list"></div>`;
   container.append(panel);
 

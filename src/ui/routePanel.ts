@@ -20,7 +20,7 @@ function buildDisplayRoute(track: RiderTrack, trim: RiderTrim): ReferenceRoute {
 
 export function createRoutePanel(container: HTMLElement): void {
   const panel = document.createElement("section");
-  panel.className = "panel";
+  panel.className = "panel route-panel";
   panel.innerHTML = `
     <h2>Reference Route</h2>
     <p>Workflow: click selection mode, draw a box on map, adjust draggable S/E pins, then build route.</p>

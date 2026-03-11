@@ -5,6 +5,7 @@ import type { ReferenceRoute } from "../types/route";
 
 type PointMode = "none" | "all" | "sampled";
 type BaseLayerKey = "road" | "topo" | "satellite" | "dark";
+type InteractionMode = "navigate" | "draw_start" | "draw_end";
 
 const DEFAULT_CENTER_94930: [number, number] = [37.9735, -122.561];
 const DEFAULT_ZOOM_94930 = 14;
@@ -122,14 +123,33 @@ function renderTrackLayers(
           .addTo(trackLayer);
       }
       if (endPoint) {
+        const { endPin } = appStore.getState();
+        if (endPin) {
+          L.polyline(
+            [
+              [endPin.lat, endPin.lon],
+              [endPoint.lat, endPoint.lon]
+            ],
+            {
+              color,
+              weight: 2,
+              dashArray: "4,4",
+              opacity: 0.9
+            }
+          ).addTo(trackLayer);
+        }
         L.circleMarker([endPoint.lat, endPoint.lon], {
-          radius: 6,
+          radius: 10,
           color,
-          weight: 2,
+          weight: 3,
           fillColor: color,
           fillOpacity: 1
         })
-          .bindTooltip(`${riderName} trim end #${trim.endPointIndex}`)
+          .bindTooltip(`${riderName} END #${trim.endPointIndex}`, {
+            permanent: true,
+            direction: "right",
+            className: "end-point-label"
+          })
           .addTo(trackLayer);
       }
     }
@@ -156,7 +176,9 @@ function renderTrackLayers(
       });
       marker.bindTooltip(
         `${riderName} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>elapsed from start: ${
-          elapsedFromStartMs !== undefined ? `${(elapsedFromStartMs / 1000).toFixed(2)}s` : "--"
+          elapsedFromStartMs !== undefined
+            ? `${Math.round(elapsedFromStartMs)} ms (${(elapsedFromStartMs / 1000).toFixed(3)}s)`
+            : "--"
         }<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
       );
       marker.on("click", () => {
@@ -220,6 +242,12 @@ export function initMap(container: HTMLElement): void {
       </label>
     </div>
     <div id="map-canvas"></div>
+    <div class="map-controls">
+      <button id="mode-nav" type="button">Navigate</button>
+      <button id="mode-start" type="button">Set start box</button>
+      <button id="mode-end" type="button">Set end box</button>
+      <span id="mode-label"></span>
+    </div>
   `;
   container.append(mapBox);
 
@@ -227,7 +255,20 @@ export function initMap(container: HTMLElement): void {
   const basemapSelect = mapBox.querySelector<HTMLSelectElement>("#basemap-select");
   const showTracksInput = mapBox.querySelector<HTMLInputElement>("#show-tracks");
   const pointModeInput = mapBox.querySelector<HTMLSelectElement>("#point-mode");
-  if (!canvas || !basemapSelect || !showTracksInput || !pointModeInput) {
+  const modeNavBtn = mapBox.querySelector<HTMLButtonElement>("#mode-nav");
+  const modeStartBtn = mapBox.querySelector<HTMLButtonElement>("#mode-start");
+  const modeEndBtn = mapBox.querySelector<HTMLButtonElement>("#mode-end");
+  const modeLabel = mapBox.querySelector<HTMLSpanElement>("#mode-label");
+  if (
+    !canvas ||
+    !basemapSelect ||
+    !showTracksInput ||
+    !pointModeInput ||
+    !modeNavBtn ||
+    !modeStartBtn ||
+    !modeEndBtn ||
+    !modeLabel
+  ) {
     throw new Error("Map controls failed to initialize");
   }
 
@@ -267,6 +308,19 @@ export function initMap(container: HTMLElement): void {
   let lastZoomRequestId = -1;
   let lastFocusRequestId = -1;
   let lastLockZoom = false;
+  let interactionMode: InteractionMode = "navigate";
+
+  const updateModeUI = (): void => {
+    modeNavBtn.disabled = interactionMode === "navigate";
+    modeStartBtn.disabled = interactionMode === "draw_start";
+    modeEndBtn.disabled = interactionMode === "draw_end";
+    modeLabel.textContent =
+      interactionMode === "navigate"
+        ? "Mode: navigate"
+        : interactionMode === "draw_start"
+          ? "Mode: draw start box"
+          : "Mode: draw end box";
+  };
 
   const applyZoomLock = (lock: boolean): void => {
     if (lock === lastLockZoom) {
@@ -375,8 +429,7 @@ export function initMap(container: HTMLElement): void {
   };
 
   map.on("mousedown", (event) => {
-    const phase = appStore.getState().selectionPhase;
-    if (phase !== "select_start" && phase !== "select_end") {
+    if (interactionMode === "navigate") {
       return;
     }
     isDrawing = true;
@@ -386,7 +439,7 @@ export function initMap(container: HTMLElement): void {
       drawRect.remove();
     }
     drawRect = L.rectangle(L.latLngBounds(drawStart, drawStart), {
-      color: phase === "select_start" ? "#dc2626" : "#111827",
+      color: interactionMode === "draw_start" ? "#dc2626" : "#111827",
       weight: 2,
       fillOpacity: 0.08
     }).addTo(boxLayer);
@@ -405,13 +458,15 @@ export function initMap(container: HTMLElement): void {
     }
     isDrawing = false;
     map.dragging.enable();
-    const phase = appStore.getState().selectionPhase;
+    const phase = interactionMode === "draw_start" ? "select_start" : "select_end";
     const bounds = L.latLngBounds(drawStart, event.latlng);
     if (phase === "select_start") {
       processSelectionBox(bounds, "start");
     } else if (phase === "select_end") {
       processSelectionBox(bounds, "end");
     }
+    interactionMode = "navigate";
+    updateModeUI();
     window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
   });
 
@@ -422,6 +477,21 @@ export function initMap(container: HTMLElement): void {
   });
   showTracksInput.addEventListener("change", rerender);
   pointModeInput.addEventListener("change", rerender);
+  modeNavBtn.addEventListener("click", () => {
+    interactionMode = "navigate";
+    updateModeUI();
+  });
+  modeStartBtn.addEventListener("click", () => {
+    interactionMode = "draw_start";
+    appStore.getState().setSelectionPhase("select_start");
+    updateModeUI();
+  });
+  modeEndBtn.addEventListener("click", () => {
+    interactionMode = "draw_end";
+    appStore.getState().setSelectionPhase("select_end");
+    updateModeUI();
+  });
   window.addEventListener("gpxcompare:state-changed", rerender);
+  updateModeUI();
   rerender();
 }

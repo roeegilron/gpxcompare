@@ -2,7 +2,7 @@ import { appStore } from "../app/store";
 
 export function createPlaybackPanel(container: HTMLElement): void {
   const panel = document.createElement("section");
-  panel.className = "panel";
+  panel.className = "panel playback-panel";
   panel.innerHTML = `
     <h2>Playback</h2>
     <label>

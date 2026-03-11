@@ -14,12 +14,15 @@ This project is a browser-only tool (GitHub Pages deploy) for comparing GPX trac
   3. build consensus reference route
 - Build timing comparison by trimming each rider to nearest start/end pin matches.
 - Compare riders against a selected base rider with:
-  - gap chart (time gap vs route distance)
-  - comparison table (elapsed, gap, speed delta, route distance)
+  - gap chart (time gap over elapsed-time axis of base rider)
+  - comparison table (elapsed, gap, speed delta, progress)
 - Allow rider rename/recolor and include/exclude toggles for comparison.
 - Include `Zoom to compare route` and `Lock zoom` controls for focused analysis.
+- Include map interaction buttons (`Navigate`, `Set start box`, `Set end box`) to avoid accidental draw-mode lock.
 - Include per-rider `Zoom Start` / `Zoom End` and ±1/±5 trim nudges for precise boundary tuning.
 - Show live segment time per rider while adjusting trim points.
+- Show table rows sorted by current leader (fastest first).
+- Support table time-format toggle: `mm:ss.fff` or `seconds`.
 
 ## How It Works (Pipeline)
 
@@ -29,6 +32,12 @@ This project is a browser-only tool (GitHub Pages deploy) for comparing GPX trac
 4. Per-rider trim points are auto-assigned by nearest match to S/E pins.
 5. Time-at-progress series are generated for each trimmed segment.
 6. Gaps are computed relative to a chosen base rider (default leader at build time).
+
+## Key UI Notes
+
+- End points are emphasized with large labeled end markers and dashed connectors from global `E` pin.
+- Comparison table is sticky on the right side for constant visibility while adjusting controls.
+- Point tooltip shows elapsed-from-start in millisecond precision.
 
 ## Detailed Usage Guide
 
