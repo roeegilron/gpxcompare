@@ -12,7 +12,7 @@ This project is a browser-only tool (GitHub Pages deploy) for comparing GPX trac
   1. draw start box and place/move S pin
   2. draw end box and place/move E pin
   3. build consensus reference route
-- Build a high-resolution (~0.5m station spacing) averaged route from trimmed rider segments.
+- Build timing comparison by trimming each rider to nearest start/end pin matches.
 - Compare riders against a selected base rider with:
   - gap chart (time gap vs route distance)
   - comparison table (elapsed, gap, speed delta, route distance)
@@ -27,10 +27,8 @@ This project is a browser-only tool (GitHub Pages deploy) for comparing GPX trac
 2. User draws start and end boxes to estimate pin locations from points crossing each box.
 3. User can drag S/E pins to refine exact anchor locations.
 4. Per-rider trim points are auto-assigned by nearest match to S/E pins.
-5. Trimmed rider segments are resampled by route progress and averaged into a consensus line.
-6. Rider points are evaluated against the shared route axis.
-7. Time-at-distance series are generated per rider.
-8. Gaps are computed relative to a chosen base rider (default leader at build time).
+5. Time-at-progress series are generated for each trimmed segment.
+6. Gaps are computed relative to a chosen base rider (default leader at build time).
 
 ## Detailed Usage Guide
 

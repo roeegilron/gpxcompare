@@ -1,7 +1,22 @@
 import { appStore } from "../app/store";
-import { buildConsensusRoute } from "../domain/consensusRoute";
 import { buildComparisonDataset, leaderRiderId } from "../domain/comparison";
+import { cumulativeDistanceM } from "../domain/metrics";
 import type { RiderTrack, RiderTrim } from "../types/gpx";
+import type { ReferenceRoute } from "../types/route";
+
+function buildDisplayRoute(track: RiderTrack, trim: RiderTrim): ReferenceRoute {
+  const startIdx = Math.max(0, trim.startPointIndex);
+  const endIdx = Math.max(startIdx, Math.min(trim.endPointIndex, track.points.length - 1));
+  const points = track.points.slice(startIdx, endIdx + 1);
+  const coordinates: [number, number][] = points.map((p) => [p.lon, p.lat]);
+  const cumulative = cumulativeDistanceM(points);
+  return {
+    routeId: `display-${track.riderId}`,
+    source: "single_rider",
+    coordinates,
+    cumulativeDistanceM: cumulative
+  };
+}
 
 export function createRoutePanel(container: HTMLElement): void {
   const panel = document.createElement("section");
@@ -13,7 +28,7 @@ export function createRoutePanel(container: HTMLElement): void {
       <button id="phase-start" type="button">1) Select starts (draw box)</button>
       <button id="phase-end" type="button">2) Select ends (draw box)</button>
     </div>
-    <button id="build-consensus" type="button">3) Build consensus route (0.5m)</button>
+    <button id="build-consensus" type="button">3) Build timing comparison</button>
     <button id="zoom-route" type="button">Zoom to compare route</button>
     <label><input id="lock-zoom" type="checkbox" /> Lock zoom</label>
     <button id="clear-route" type="button">Clear route</button>
@@ -108,24 +123,27 @@ export function createRoutePanel(container: HTMLElement): void {
   buildBtn.addEventListener("click", () => {
     try {
       const { tracks, trims, includeInComparison } = appStore.getState();
-      const inputs = tracks.reduce<Array<{ track: RiderTrack; trim: RiderTrim }>>((acc, track) => {
-        const trim = trims[track.riderId];
-        if (trim && includeInComparison[track.riderId]) {
-          acc.push({ track, trim });
-        }
-        return acc;
-      }, []);
-      const route = buildConsensusRoute(inputs, 0.5);
       const includedIds = tracks.filter((track) => includeInComparison[track.riderId]).map((track) => track.riderId);
-      appStore.getState().setReferenceRoute(route, true);
+      appStore.getState().applyPinToIncludedRiders("start");
+      appStore.getState().applyPinToIncludedRiders("end");
       if (includedIds.length > 0) {
         const dataset = buildComparisonDataset(
           tracks.filter((track) => includeInComparison[track.riderId]),
-          trims,
-          route
+          appStore.getState().trims
         );
         const leaderId = leaderRiderId(dataset, includedIds);
         appStore.getState().setCompareToRider(leaderId ?? includedIds[0]);
+        const displayTrack =
+          tracks.find((track) => track.riderId === (leaderId ?? includedIds[0])) ??
+          tracks.find((track) => includeInComparison[track.riderId]);
+        if (displayTrack) {
+          const displayTrim = appStore.getState().trims[displayTrack.riderId];
+          if (displayTrim) {
+            appStore.getState().setReferenceRoute(buildDisplayRoute(displayTrack, displayTrim), true);
+          }
+        } else {
+          appStore.getState().setSelectionPhase("built");
+        }
       }
       window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
     } catch (error) {

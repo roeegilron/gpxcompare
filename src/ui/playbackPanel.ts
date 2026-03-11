@@ -20,26 +20,23 @@ export function createPlaybackPanel(container: HTMLElement): void {
   }
 
   slider.addEventListener("input", () => {
-    const { referenceRoute } = appStore.getState();
-    const maxDistance = referenceRoute?.cumulativeDistanceM[referenceRoute.cumulativeDistanceM.length - 1] ?? 0;
     const ratio = Number(slider.value) / Number(slider.max);
-    appStore.getState().setProgressDistanceM(ratio * maxDistance);
+    appStore.getState().setProgressDistanceM(ratio);
     window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
   });
 
   const render = (): void => {
-    const { referenceRoute, progressDistanceM } = appStore.getState();
-    const maxDistance = referenceRoute?.cumulativeDistanceM[referenceRoute.cumulativeDistanceM.length - 1] ?? 0;
-    if (maxDistance <= 0) {
+    const { selectionPhase, progressDistanceM } = appStore.getState();
+    if (selectionPhase !== "built") {
       slider.disabled = true;
       slider.value = "0";
-      label.textContent = "Build route to enable playback.";
+      label.textContent = "Build timing comparison to enable playback.";
       return;
     }
     slider.disabled = false;
-    const ratio = maxDistance === 0 ? 0 : progressDistanceM / maxDistance;
+    const ratio = Math.max(0, Math.min(1, progressDistanceM));
     slider.value = String(Math.max(0, Math.min(1000, Math.round(ratio * 1000))));
-    label.textContent = `${progressDistanceM.toFixed(1)}m / ${maxDistance.toFixed(1)}m`;
+    label.textContent = `${(ratio * 100).toFixed(1)}% segment progress`;
   };
 
   window.addEventListener("gpxcompare:state-changed", render);

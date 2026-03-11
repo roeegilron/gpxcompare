@@ -1,96 +1,79 @@
-import { lineString, nearestPointOnLine, point } from "@turf/turf";
+import { cumulativeDistanceM } from "./metrics";
 import type { RiderTrack, RiderTrim } from "../types/gpx";
-import type { ReferenceRoute } from "../types/route";
 
 export type RiderComparisonSeries = {
   riderId: string;
-  distancesM: number[];
-  elapsedMsAtDistance: Array<number | undefined>;
+  elapsedMsAtFraction: Array<number | undefined>;
+  totalDistanceM: number;
+  totalElapsedMs?: number;
 };
 
 export type ComparisonDataset = {
-  stationDistancesM: number[];
+  stationFractions: number[];
   byRider: Record<string, RiderComparisonSeries>;
 };
 
-type SnappedSample = {
-  routeDistanceM: number;
+type Sample = {
+  distanceM: number;
   elapsedMs: number;
 };
 
-function toSnappedSamples(track: RiderTrack, trim: RiderTrim, route: ReferenceRoute): SnappedSample[] {
+function buildSamples(track: RiderTrack, trim: RiderTrim): Sample[] {
   const startIdx = Math.max(0, trim.startPointIndex);
-  const endIdx = Math.max(startIdx, trim.endPointIndex);
-  const start = track.points[startIdx];
-  if (!start?.timeMs) {
+  const endIdx = Math.max(startIdx, Math.min(trim.endPointIndex, track.points.length - 1));
+  const points = track.points.slice(startIdx, endIdx + 1);
+  const startTime = points[0]?.timeMs;
+  if (!startTime || points.length < 2) {
     return [];
   }
-  const routeLine = lineString(route.coordinates);
-
-  const samples: SnappedSample[] = [];
-  let prevDistance = 0;
-  for (let i = startIdx; i <= endIdx; i += 1) {
-    const p = track.points[i];
-    if (!p?.timeMs) {
-      continue;
-    }
-    const snapped = nearestPointOnLine(routeLine, point([p.lon, p.lat]), { units: "meters" });
-    const locationRaw = snapped.properties.location;
-    if (typeof locationRaw !== "number") {
-      continue;
-    }
-    // Enforce monotonic progression along the route to stabilize inversion.
-    const routeDistanceM = Math.max(prevDistance, locationRaw);
-    prevDistance = routeDistanceM;
-    samples.push({
-      routeDistanceM,
-      elapsedMs: p.timeMs - start.timeMs
-    });
-  }
-  return samples;
+  const distances = cumulativeDistanceM(points);
+  return points
+    .map((point, idx) => ({
+      distanceM: distances[idx] ?? 0,
+      elapsedMs: point.timeMs !== undefined ? point.timeMs - startTime : undefined
+    }))
+    .filter((item): item is Sample => item.elapsedMs !== undefined);
 }
 
-function elapsedAtDistance(samples: SnappedSample[], distanceM: number): number | undefined {
+function elapsedAtFraction(samples: Sample[], fraction: number): number | undefined {
   if (samples.length === 0) {
     return undefined;
   }
+  const total = samples[samples.length - 1]?.distanceM ?? 0;
+  const target = Math.max(0, Math.min(1, fraction)) * total;
   const first = samples[0];
-  const last = samples[samples.length - 1];
-  if (!first || !last) {
+  if (!first) {
     return undefined;
   }
-  if (distanceM <= first.routeDistanceM) {
+  if (target <= first.distanceM) {
     return first.elapsedMs;
   }
-  if (distanceM > last.routeDistanceM) {
-    return undefined;
-  }
-
   for (let i = 1; i < samples.length; i += 1) {
     const prev = samples[i - 1];
     const next = samples[i];
     if (!prev || !next) {
       continue;
     }
-    if (distanceM > next.routeDistanceM) {
+    if (target > next.distanceM) {
       continue;
     }
-    const span = next.routeDistanceM - prev.routeDistanceM;
+    const span = next.distanceM - prev.distanceM;
     if (span <= 0) {
       return next.elapsedMs;
     }
-    const ratio = (distanceM - prev.routeDistanceM) / span;
+    const ratio = (target - prev.distanceM) / span;
     return prev.elapsedMs + (next.elapsedMs - prev.elapsedMs) * ratio;
   }
-  return undefined;
+  return samples[samples.length - 1]?.elapsedMs;
 }
 
 export function buildComparisonDataset(
   tracks: RiderTrack[],
   trims: Record<string, RiderTrim>,
-  route: ReferenceRoute
+  stationCount = 300
 ): ComparisonDataset {
-  const stationDistancesM = route.cumulativeDistanceM;
+  const count = Math.max(2, Math.min(2000, stationCount));
+  const stationFractions = Array.from({ length: count }, (_, idx) => idx / (count - 1));
   const byRider: Record<string, RiderComparisonSeries> = {};
 
   tracks.forEach((track) => {
@@ -98,25 +81,25 @@ export function buildComparisonDataset(
     if (!trim) {
       return;
     }
-    const snapped = toSnappedSamples(track, trim, route);
+    const samples = buildSamples(track, trim);
+    const totalDistanceM = samples[samples.length - 1]?.distanceM ?? 0;
+    const totalElapsedMs = samples[samples.length - 1]?.elapsedMs;
     byRider[track.riderId] = {
       riderId: track.riderId,
-      distancesM: stationDistancesM,
-      elapsedMsAtDistance: stationDistancesM.map((distanceM) => elapsedAtDistance(snapped, distanceM))
+      elapsedMsAtFraction: stationFractions.map((fraction) => elapsedAtFraction(samples, fraction)),
+      totalDistanceM,
+      totalElapsedMs
     };
   });
 
-  return { stationDistancesM, byRider };
+  return { stationFractions, byRider };
 }
 
-export function leaderRiderId(
-  dataset: ComparisonDataset,
-  riderIds: string[]
-): string | undefined {
-  const lastDistanceIdx = Math.max(0, dataset.stationDistancesM.length - 1);
+export function leaderRiderId(dataset: ComparisonDataset, riderIds: string[]): string | undefined {
+  const lastIdx = Math.max(0, dataset.stationFractions.length - 1);
   let winner: { riderId: string; elapsedMs: number } | undefined;
   riderIds.forEach((riderId) => {
-    const elapsed = dataset.byRider[riderId]?.elapsedMsAtDistance[lastDistanceIdx];
+    const elapsed = dataset.byRider[riderId]?.elapsedMsAtFraction[lastIdx];
     if (elapsed === undefined) {
       return;
     }
@@ -137,8 +120,8 @@ export function gapSeriesMs(
   if (!rider || !base) {
     return [];
   }
-  return rider.elapsedMsAtDistance.map((elapsed, idx) => {
-    const baseElapsed = base.elapsedMsAtDistance[idx];
+  return rider.elapsedMsAtFraction.map((elapsed, idx) => {
+    const baseElapsed = base.elapsedMsAtFraction[idx];
     if (elapsed === undefined || baseElapsed === undefined) {
       return undefined;
     }

@@ -18,24 +18,23 @@ export function createChartsPanel(container: HTMLElement): void {
   }
 
   const render = (): void => {
-    const { tracks, trims, referenceRoute, includeInComparison, compareToRiderId, riderSettings } =
+    const { tracks, trims, selectionPhase, includeInComparison, compareToRiderId, riderSettings } =
       appStore.getState();
-    if (!referenceRoute || !compareToRiderId) {
+    if (selectionPhase !== "built" || !compareToRiderId) {
       chart.innerHTML = "";
-      caption.textContent = "Build a route and choose a compare rider to view chart.";
+      caption.textContent = "Build timing comparison and choose a compare rider to view chart.";
       return;
     }
 
     const includedTracks = tracks.filter((track) => includeInComparison[track.riderId]);
-    const dataset = buildComparisonDataset(includedTracks, trims, referenceRoute);
-    const distances = dataset.stationDistancesM;
-    const maxDistance = distances[distances.length - 1] ?? 1;
+    const dataset = buildComparisonDataset(includedTracks, trims, 350);
+    const fractions = dataset.stationFractions;
     const allGaps = includedTracks.flatMap((track) =>
       gapSeriesMs(dataset, track.riderId, compareToRiderId).filter((v): v is number => v !== undefined)
     );
     const maxAbsGap = Math.max(1, ...allGaps.map((value) => Math.abs(value / 1000)));
 
-    const toX = (distanceM: number): number => (distanceM / maxDistance) * 1000;
+    const toX = (fraction: number): number => fraction * 1000;
     const toY = (gapMs: number): number => 160 - ((gapMs / 1000) / maxAbsGap) * 140;
 
     const paths = includedTracks
@@ -46,7 +45,7 @@ export function createChartsPanel(container: HTMLElement): void {
             if (gap === undefined) {
               return "";
             }
-            return `${toX(distances[idx] ?? 0)},${toY(gap)}`;
+            return `${toX(fractions[idx] ?? 0)},${toY(gap)}`;
           })
           .filter(Boolean)
           .join(" ");
@@ -62,7 +61,8 @@ export function createChartsPanel(container: HTMLElement): void {
       <rect x="0" y="0" width="1000" height="320" fill="none" stroke="#d1d5db" />
       ${paths}
     `;
-    caption.textContent = "0 line = compare rider. Positive values are behind; negative are ahead.";
+    caption.textContent =
+      "X-axis is segment progress (0% to 100%). 0 line = compare rider. Positive values are behind; negative are ahead.";
   };
 
   window.addEventListener("gpxcompare:state-changed", render);

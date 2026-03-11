@@ -14,21 +14,26 @@ function elapsedAtDistance(series: Array<number | undefined>, idx: number): numb
 }
 
 function speedAtIndexMps(
-  distances: number[],
+  fractions: number[],
+  totalDistanceM: number,
   elapsedSeries: Array<number | undefined>,
   idx: number,
-  windowM = 10
+  windowFraction = 0.03
 ): number | undefined {
-  const hereDistance = distances[idx];
+  const hereDistance = (fractions[idx] ?? 0) * totalDistanceM;
   const hereTime = elapsedAtDistance(elapsedSeries, idx);
   if (hereDistance === undefined || hereTime === undefined) {
     return undefined;
   }
   let backIdx = idx;
-  while (backIdx > 0 && (hereDistance - (distances[backIdx] ?? hereDistance)) < windowM) {
+  while (
+    backIdx > 0 &&
+    (hereDistance - ((fractions[backIdx] ?? (fractions[idx] ?? 0)) * totalDistanceM)) <
+      windowFraction * totalDistanceM
+  ) {
     backIdx -= 1;
   }
-  const backDistance = distances[backIdx];
+  const backDistance = (fractions[backIdx] ?? 0) * totalDistanceM;
   const backTime = elapsedAtDistance(elapsedSeries, backIdx);
   if (backDistance === undefined || backTime === undefined) {
     return undefined;
@@ -55,33 +60,38 @@ export function createCompareTable(container: HTMLElement): void {
   }
 
   const render = (): void => {
-    const { tracks, trims, referenceRoute, includeInComparison, compareToRiderId, progressDistanceM, riderSettings } =
+    const { tracks, trims, selectionPhase, includeInComparison, compareToRiderId, progressDistanceM, riderSettings } =
       appStore.getState();
-    if (!referenceRoute || !compareToRiderId) {
-      root.innerHTML = "<p>Build route to enable comparison table.</p>";
+    if (selectionPhase !== "built" || !compareToRiderId) {
+      root.innerHTML = "<p>Build timing comparison to enable table.</p>";
       return;
     }
     const included = tracks.filter((track) => includeInComparison[track.riderId]);
-    const dataset = buildComparisonDataset(included, trims, referenceRoute);
-    const distances = dataset.stationDistancesM;
-    const idx = distances.findIndex((distance) => distance >= progressDistanceM);
-    const distanceIdx = idx === -1 ? Math.max(0, distances.length - 1) : idx;
+    const dataset = buildComparisonDataset(included, trims, 350);
+    const fractions = dataset.stationFractions;
+    const targetFraction = Math.max(0, Math.min(1, progressDistanceM));
+    const idx = fractions.findIndex((fraction) => fraction >= targetFraction);
+    const fractionIdx = idx === -1 ? Math.max(0, fractions.length - 1) : idx;
 
-    const baseSeries = dataset.byRider[compareToRiderId]?.elapsedMsAtDistance;
+    const baseData = dataset.byRider[compareToRiderId];
+    const baseSeries = baseData?.elapsedMsAtFraction;
     if (!baseSeries) {
       root.innerHTML = "<p>Select a compare rider in Reference Route panel.</p>";
       return;
     }
-    const baseElapsed = elapsedAtDistance(baseSeries, distanceIdx);
-    const baseSpeed = speedAtIndexMps(distances, baseSeries, distanceIdx);
+    const baseElapsed = elapsedAtDistance(baseSeries, fractionIdx);
+    const baseSpeed = speedAtIndexMps(fractions, baseData.totalDistanceM, baseSeries, fractionIdx);
 
     const rows = included
       .map((track) => {
         const settings = riderSettings[track.riderId];
-        const series = dataset.byRider[track.riderId]?.elapsedMsAtDistance;
-        const elapsed = series ? elapsedAtDistance(series, distanceIdx) : undefined;
+        const riderData = dataset.byRider[track.riderId];
+        const series = riderData?.elapsedMsAtFraction;
+        const elapsed = series ? elapsedAtDistance(series, fractionIdx) : undefined;
         const gap = elapsed !== undefined && baseElapsed !== undefined ? elapsed - baseElapsed : undefined;
-        const speed = series ? speedAtIndexMps(distances, series, distanceIdx) : undefined;
+        const speed = series
+          ? speedAtIndexMps(fractions, riderData?.totalDistanceM ?? 0, series, fractionIdx)
+          : undefined;
         const speedDelta =
           speed !== undefined && baseSpeed !== undefined ? speed - baseSpeed : undefined;
         const marker = track.riderId === compareToRiderId ? "(base)" : "";
@@ -91,7 +101,7 @@ export function createCompareTable(container: HTMLElement): void {
             <td>${elapsed === undefined ? "--" : `${(elapsed / 1000).toFixed(1)}s`}</td>
             <td>${formatMs(gap)}</td>
             <td>${speedDelta === undefined ? "--" : `${speedDelta >= 0 ? "+" : ""}${speedDelta.toFixed(2)} m/s`}</td>
-            <td>${(distances[distanceIdx] ?? 0).toFixed(1)}m</td>
+            <td>${((fractions[fractionIdx] ?? 0) * 100).toFixed(1)}%</td>
           </tr>
         `;
       })
@@ -100,7 +110,7 @@ export function createCompareTable(container: HTMLElement): void {
     root.innerHTML = `
       <table class="compare-grid">
         <thead>
-          <tr><th>Athlete</th><th>Elapsed</th><th>Gap</th><th>Speed Δ</th><th>Route dist</th></tr>
+          <tr><th>Athlete</th><th>Elapsed</th><th>Gap</th><th>Speed Δ</th><th>Progress</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>

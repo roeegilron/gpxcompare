@@ -144,6 +144,9 @@ function renderTrackLayers(
       }
       const active =
         selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === point.pointIndex;
+      const startTime = trim ? track.points[trim.startPointIndex]?.timeMs : undefined;
+      const elapsedFromStartMs =
+        startTime !== undefined && point.timeMs !== undefined ? point.timeMs - startTime : undefined;
       const marker = L.circleMarker([point.lat, point.lon], {
         radius: active ? 5 : 2.8,
         color,
@@ -152,7 +155,9 @@ function renderTrackLayers(
         weight: active ? 3 : 1
       });
       marker.bindTooltip(
-        `${riderName} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
+        `${riderName} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>elapsed from start: ${
+          elapsedFromStartMs !== undefined ? `${(elapsedFromStartMs / 1000).toFixed(2)}s` : "--"
+        }<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
       );
       marker.on("click", () => {
         onPointClick?.(track.riderId, point.pointIndex);
