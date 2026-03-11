@@ -9,6 +9,14 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function formatSegmentDurationMs(startMs?: number, endMs?: number): string {
+  if (startMs === undefined || endMs === undefined || endMs < startMs) {
+    return "--";
+  }
+  const seconds = (endMs - startMs) / 1000;
+  return `${seconds.toFixed(2)}s`;
+}
+
 export function createRiderPanel(container: HTMLElement): void {
   const panel = document.createElement("section");
   panel.className = "panel";
@@ -21,7 +29,7 @@ export function createRiderPanel(container: HTMLElement): void {
   }
 
   const render = (): void => {
-    const { tracks, warnings, trims, selectedPoint, riderSettings, riderSelection, includeInComparison } =
+    const { tracks, warnings, trims, selectedPoint, riderSettings, riderSelection, includeInComparison, routeNeedsRebuild } =
       appStore.getState();
     if (tracks.length === 0) {
       list.innerHTML = "<p>No tracks uploaded yet.</p>";
@@ -33,6 +41,9 @@ export function createRiderPanel(container: HTMLElement): void {
         const displayName = settings?.name ?? track.riderId;
         const trim = trims[track.riderId];
         const selection = riderSelection[track.riderId];
+        const startPoint = trim ? track.points[trim.startPointIndex] : undefined;
+        const endPoint = trim ? track.points[trim.endPointIndex] : undefined;
+        const segmentTime = formatSegmentDurationMs(startPoint?.timeMs, endPoint?.timeMs);
         const selectedForRider =
           selectedPoint?.riderId === track.riderId ? selectedPoint.pointIndex : undefined;
         const riderWarnings = warnings[track.riderId] ?? [];
@@ -78,14 +89,25 @@ export function createRiderPanel(container: HTMLElement): void {
             <p><strong>First timestamp:</strong> ${track.points[0]?.time ?? "N/A"}</p>
             <p><strong>Trim start:</strong> ${trim?.startPointIndex ?? 0}</p>
             <p><strong>Trim end:</strong> ${trim?.endPointIndex ?? Math.max(0, track.points.length - 1)}</p>
+            <p><strong>Segment time:</strong> ${segmentTime} ${routeNeedsRebuild ? "(route needs rebuild)" : ""}</p>
             <p><strong>Start selected:</strong> ${selection?.startSelected ? "yes" : "no"}</p>
             <p><strong>End selected:</strong> ${selection?.endSelected ? "yes" : "no"}</p>
             <p><strong>Selected point:</strong> ${selectedForRider ?? "none (click a map point)"}</p>
             <div class="trim-controls">
+              <button data-action="zoom-start" data-rider="${track.riderId}" type="button">Zoom Start</button>
+              <button data-action="zoom-end" data-rider="${track.riderId}" type="button">Zoom End</button>
+            </div>
+            <div class="trim-controls">
+              <button data-action="start-minus-5" data-rider="${track.riderId}" type="button">Start -5</button>
               <button data-action="start-minus" data-rider="${track.riderId}" type="button">Start -1</button>
               <button data-action="start-plus" data-rider="${track.riderId}" type="button">Start +1</button>
+              <button data-action="start-plus-5" data-rider="${track.riderId}" type="button">Start +5</button>
+            </div>
+            <div class="trim-controls">
+              <button data-action="end-minus-5" data-rider="${track.riderId}" type="button">End -5</button>
               <button data-action="end-minus" data-rider="${track.riderId}" type="button">End -1</button>
               <button data-action="end-plus" data-rider="${track.riderId}" type="button">End +1</button>
+              <button data-action="end-plus-5" data-rider="${track.riderId}" type="button">End +5</button>
             </div>
             <ul>${warningHtml}</ul>
           </article>
@@ -127,14 +149,26 @@ export function createRiderPanel(container: HTMLElement): void {
       return;
     }
 
-    if (action === "start-minus") {
+    if (action === "zoom-start") {
+      appStore.getState().requestFocusRiderPoint(riderId, "start");
+    } else if (action === "zoom-end") {
+      appStore.getState().requestFocusRiderPoint(riderId, "end");
+    } else if (action === "start-minus-5") {
+      appStore.getState().nudgeTrimStart(riderId, -5);
+    } else if (action === "start-minus") {
       appStore.getState().nudgeTrimStart(riderId, -1);
     } else if (action === "start-plus") {
       appStore.getState().nudgeTrimStart(riderId, 1);
+    } else if (action === "start-plus-5") {
+      appStore.getState().nudgeTrimStart(riderId, 5);
+    } else if (action === "end-minus-5") {
+      appStore.getState().nudgeTrimEnd(riderId, -5);
     } else if (action === "end-minus") {
       appStore.getState().nudgeTrimEnd(riderId, -1);
     } else if (action === "end-plus") {
       appStore.getState().nudgeTrimEnd(riderId, 1);
+    } else if (action === "end-plus-5") {
+      appStore.getState().nudgeTrimEnd(riderId, 5);
     }
 
     window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));

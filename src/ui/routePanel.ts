@@ -8,12 +8,14 @@ export function createRoutePanel(container: HTMLElement): void {
   panel.className = "panel";
   panel.innerHTML = `
     <h2>Reference Route</h2>
-    <p>Workflow: select start on every included rider, then end on every included rider, then build route.</p>
+    <p>Workflow: click selection mode, draw a box on map, adjust draggable S/E pins, then build route.</p>
     <div class="trim-controls">
-      <button id="phase-start" type="button">1) Select starts</button>
-      <button id="phase-end" type="button">2) Select ends</button>
+      <button id="phase-start" type="button">1) Select starts (draw box)</button>
+      <button id="phase-end" type="button">2) Select ends (draw box)</button>
     </div>
     <button id="build-consensus" type="button">3) Build consensus route (0.5m)</button>
+    <button id="zoom-route" type="button">Zoom to compare route</button>
+    <label><input id="lock-zoom" type="checkbox" /> Lock zoom</label>
     <button id="clear-route" type="button">Clear route</button>
     <label>
       Compare to rider
@@ -28,16 +30,38 @@ export function createRoutePanel(container: HTMLElement): void {
   const clearBtn = panel.querySelector<HTMLButtonElement>("#clear-route");
   const phaseStartBtn = panel.querySelector<HTMLButtonElement>("#phase-start");
   const phaseEndBtn = panel.querySelector<HTMLButtonElement>("#phase-end");
+  const zoomRouteBtn = panel.querySelector<HTMLButtonElement>("#zoom-route");
+  const lockZoomInput = panel.querySelector<HTMLInputElement>("#lock-zoom");
   const compareSelect = panel.querySelector<HTMLSelectElement>("#compare-rider");
   const selectionStatus = panel.querySelector<HTMLDivElement>("#selection-status");
   const status = panel.querySelector<HTMLDivElement>("#route-status");
-  if (!buildBtn || !clearBtn || !status || !phaseStartBtn || !phaseEndBtn || !compareSelect || !selectionStatus) {
+  if (
+    !buildBtn ||
+    !clearBtn ||
+    !status ||
+    !phaseStartBtn ||
+    !phaseEndBtn ||
+    !zoomRouteBtn ||
+    !lockZoomInput ||
+    !compareSelect ||
+    !selectionStatus
+  ) {
     throw new Error("Route panel failed to initialize");
   }
 
   const render = (): void => {
-    const { referenceRoute, tracks, riderSelection, includeInComparison, selectionPhase, compareToRiderId } =
-      appStore.getState();
+    const {
+      referenceRoute,
+      tracks,
+      riderSelection,
+      includeInComparison,
+      selectionPhase,
+      compareToRiderId,
+      startPin,
+      endPin,
+      lockZoom,
+      routeNeedsRebuild
+    } = appStore.getState();
     const includedTracks = tracks.filter((track) => includeInComparison[track.riderId]);
     const allStarts =
       includedTracks.length > 0 &&
@@ -46,9 +70,11 @@ export function createRoutePanel(container: HTMLElement): void {
       includedTracks.length > 0 &&
       includedTracks.every((track) => riderSelection[track.riderId]?.endSelected === true);
 
-    phaseStartBtn.disabled = selectionPhase === "built";
+    phaseStartBtn.disabled = false;
     phaseEndBtn.disabled = !allStarts || selectionPhase === "built";
     buildBtn.disabled = !(allStarts && allEnds);
+    zoomRouteBtn.disabled = !referenceRoute;
+    lockZoomInput.checked = lockZoom;
 
     compareSelect.innerHTML = includedTracks
       .map((track) => {
@@ -68,9 +94,15 @@ export function createRoutePanel(container: HTMLElement): void {
 
     if (!referenceRoute) {
       status.textContent = `No reference route yet. Phase: ${selectionPhase}.`;
+      if (!startPin || !endPin) {
+        status.textContent += " Draw start and end boxes to place S/E pins.";
+      }
       return;
     }
     status.textContent = `Route points: ${referenceRoute.coordinates.length}. Source: ${referenceRoute.source}. Phase: ${selectionPhase}.`;
+    if (routeNeedsRebuild) {
+      status.textContent += " Trim points changed after build; rebuild route to refresh comparison.";
+    }
   };
 
   buildBtn.addEventListener("click", () => {
@@ -115,6 +147,14 @@ export function createRoutePanel(container: HTMLElement): void {
   });
   compareSelect.addEventListener("change", () => {
     appStore.getState().setCompareToRider(compareSelect.value);
+    window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+  });
+  zoomRouteBtn.addEventListener("click", () => {
+    appStore.getState().requestZoomToRoute();
+    window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+  });
+  lockZoomInput.addEventListener("change", () => {
+    appStore.getState().setLockZoom(lockZoomInput.checked);
     window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
   });
 

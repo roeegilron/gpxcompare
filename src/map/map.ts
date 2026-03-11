@@ -5,6 +5,7 @@ import type { ReferenceRoute } from "../types/route";
 
 type PointMode = "none" | "all" | "sampled";
 type BaseLayerKey = "road" | "topo" | "satellite" | "dark";
+
 const DEFAULT_CENTER_94930: [number, number] = [37.9735, -122.561];
 const DEFAULT_ZOOM_94930 = 14;
 
@@ -28,14 +29,11 @@ function buildBaseLayers(): Record<BaseLayerKey, L.TileLayer> {
         maxZoom: 24
       }
     ),
-    dark: L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      {
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
-        maxNativeZoom: 20,
-        maxZoom: 24
-      }
-    )
+    dark: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+      maxNativeZoom: 20,
+      maxZoom: 24
+    })
   };
 }
 
@@ -50,30 +48,52 @@ function markerStep(mode: PointMode): number {
   }
 }
 
+function pinIcon(label: "S" | "E", color: string): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};color:white;border:2px solid white;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 0 0 2px ${color};">${label}</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13]
+  });
+}
+
 function renderTrackLayers(
   tracks: RiderTrack[],
   trims: Record<string, RiderTrim>,
   riderSettings: Record<string, { name: string; color: string }>,
   referenceRoute: ReferenceRoute | undefined,
   selectedPoint: { riderId: string; pointIndex: number } | undefined,
-  map: L.Map,
   trackLayer: L.LayerGroup,
   pointLayer: L.LayerGroup,
   routeLayer: L.LayerGroup,
+  boxLayer: L.LayerGroup,
+  pinLayer: L.LayerGroup,
   showTracks: boolean,
-  pointMode: PointMode
+  pointMode: PointMode,
+  startBoxBounds?: L.LatLngBounds,
+  endBoxBounds?: L.LatLngBounds,
+  onPointClick?: (riderId: string, pointIndex: number) => void,
+  onStartPinDrag?: (lat: number, lon: number) => void,
+  onEndPinDrag?: (lat: number, lon: number) => void
 ): void {
   trackLayer.clearLayers();
   pointLayer.clearLayers();
   routeLayer.clearLayers();
+  boxLayer.clearLayers();
+  pinLayer.clearLayers();
 
-  const bounds = L.latLngBounds([]);
   if (referenceRoute && referenceRoute.coordinates.length >= 2) {
     const routeLatLngs = referenceRoute.coordinates.map(([lon, lat]) => L.latLng(lat, lon));
-    L.polyline(routeLatLngs, { color: "#111827", weight: 4, opacity: 0.85, dashArray: "6,6" }).addTo(
+    L.polyline(routeLatLngs, { color: "#111827", weight: 4, opacity: 0.9, dashArray: "6,6" }).addTo(
       routeLayer
     );
-    routeLatLngs.forEach((latLng) => bounds.extend(latLng));
+  }
+
+  if (startBoxBounds) {
+    L.rectangle(startBoxBounds, { color: "#dc2626", weight: 2, fillOpacity: 0.08 }).addTo(boxLayer);
+  }
+  if (endBoxBounds) {
+    L.rectangle(endBoxBounds, { color: "#111827", weight: 2, fillOpacity: 0.06 }).addTo(boxLayer);
   }
 
   tracks.forEach((track) => {
@@ -81,7 +101,6 @@ function renderTrackLayers(
     const riderName = settings?.name ?? track.riderId;
     const color = settings?.color ?? "#3b82f6";
     const latLngs = track.points.map((p) => L.latLng(p.lat, p.lon));
-    latLngs.forEach((latLng) => bounds.extend(latLng));
 
     if (showTracks && latLngs.length >= 2) {
       L.polyline(latLngs, { color, weight: 3, opacity: 0.9 }).addTo(trackLayer);
@@ -123,33 +142,47 @@ function renderTrackLayers(
       if (idx % step !== 0) {
         return;
       }
+      const active =
+        selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === point.pointIndex;
       const marker = L.circleMarker([point.lat, point.lon], {
-        radius:
-          selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === point.pointIndex
-            ? 5
-            : 2.8,
+        radius: active ? 5 : 2.8,
         color,
         fillColor: color,
         fillOpacity: 0.8,
-        weight:
-          selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === point.pointIndex
-            ? 3
-            : 1
+        weight: active ? 3 : 1
       });
       marker.bindTooltip(
         `${riderName} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
       );
       marker.on("click", () => {
-        appStore.getState().setSelectedPoint({ riderId: track.riderId, pointIndex: point.pointIndex });
-        appStore.getState().applyPointSelectionByPhase(track.riderId, point.pointIndex);
-        window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+        onPointClick?.(track.riderId, point.pointIndex);
       });
       marker.addTo(pointLayer);
     });
   });
 
-  if (bounds.isValid()) {
-    map.fitBounds(bounds.pad(0.15));
+  const { startPin, endPin } = appStore.getState();
+  if (startPin) {
+    const marker = L.marker([startPin.lat, startPin.lon], {
+      icon: pinIcon("S", "#dc2626"),
+      draggable: true
+    });
+    marker.on("dragend", () => {
+      const next = marker.getLatLng();
+      onStartPinDrag?.(next.lat, next.lng);
+    });
+    marker.addTo(pinLayer);
+  }
+  if (endPin) {
+    const marker = L.marker([endPin.lat, endPin.lon], {
+      icon: pinIcon("E", "#111827"),
+      draggable: true
+    });
+    marker.on("dragend", () => {
+      const next = marker.getLatLng();
+      onEndPinDrag?.(next.lat, next.lng);
+    });
+    marker.addTo(pinLayer);
   }
 }
 
@@ -218,25 +251,164 @@ export function initMap(container: HTMLElement): void {
   const trackLayer = L.layerGroup().addTo(map);
   const pointLayer = L.layerGroup().addTo(map);
   const routeLayer = L.layerGroup().addTo(map);
+  const boxLayer = L.layerGroup().addTo(map);
+  const pinLayer = L.layerGroup().addTo(map);
+
+  let startBoxBounds: L.LatLngBounds | undefined;
+  let endBoxBounds: L.LatLngBounds | undefined;
+  let drawStart: L.LatLng | undefined;
+  let drawRect: L.Rectangle | undefined;
+  let isDrawing = false;
+  let lastZoomRequestId = -1;
+  let lastFocusRequestId = -1;
+  let lastLockZoom = false;
+
+  const applyZoomLock = (lock: boolean): void => {
+    if (lock === lastLockZoom) {
+      return;
+    }
+    lastLockZoom = lock;
+    if (lock) {
+      map.scrollWheelZoom.disable();
+      map.doubleClickZoom.disable();
+      map.touchZoom.disable();
+    } else {
+      map.scrollWheelZoom.enable();
+      map.doubleClickZoom.enable();
+      map.touchZoom.enable();
+    }
+  };
+
+  const processSelectionBox = (bounds: L.LatLngBounds, phase: "start" | "end"): void => {
+    const { tracks, includeInComparison } = appStore.getState();
+    const points = tracks
+      .filter((track) => includeInComparison[track.riderId])
+      .flatMap((track) => track.points.filter((point) => bounds.contains([point.lat, point.lon])));
+    if (points.length === 0) {
+      return;
+    }
+    const avgLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
+    const avgLon = points.reduce((sum, point) => sum + point.lon, 0) / points.length;
+    if (phase === "start") {
+      startBoxBounds = bounds;
+      appStore.getState().setStartPin({ lat: avgLat, lon: avgLon });
+      appStore.getState().applyPinToIncludedRiders("start");
+    } else {
+      endBoxBounds = bounds;
+      appStore.getState().setEndPin({ lat: avgLat, lon: avgLon });
+      appStore.getState().applyPinToIncludedRiders("end");
+    }
+  };
 
   const rerender = (): void => {
-    const { tracks, trims, riderSettings, referenceRoute, selectedPoint } = appStore.getState();
+    const {
+      tracks,
+      trims,
+      riderSettings,
+      referenceRoute,
+      selectedPoint,
+      lockZoom,
+      zoomToRouteRequestId,
+      focusRequestId,
+      focusRiderId,
+      focusTarget
+    } = appStore.getState();
     const showTracks = showTracksInput.checked;
     const mode = (pointModeInput.value as PointMode) ?? "all";
+
     renderTrackLayers(
       tracks,
       trims,
       riderSettings,
       referenceRoute,
       selectedPoint,
-      map,
       trackLayer,
       pointLayer,
       routeLayer,
+      boxLayer,
+      pinLayer,
       showTracks,
-      mode
+      mode,
+      startBoxBounds,
+      endBoxBounds,
+      (riderId, pointIndex) => {
+        appStore.getState().setSelectedPoint({ riderId, pointIndex });
+        window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+      },
+      (lat, lon) => {
+        appStore.getState().setStartPin({ lat, lon });
+        appStore.getState().applyPinToIncludedRiders("start");
+        window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+      },
+      (lat, lon) => {
+        appStore.getState().setEndPin({ lat, lon });
+        appStore.getState().applyPinToIncludedRiders("end");
+        window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+      }
     );
+
+    applyZoomLock(lockZoom);
+
+    if (zoomToRouteRequestId !== lastZoomRequestId && referenceRoute && referenceRoute.coordinates.length > 1) {
+      lastZoomRequestId = zoomToRouteRequestId;
+      const routeBounds = L.latLngBounds(referenceRoute.coordinates.map(([lon, lat]) => [lat, lon] as [number, number]));
+      if (routeBounds.isValid()) {
+        map.fitBounds(routeBounds.pad(0.15));
+      }
+    }
+
+    if (focusRequestId !== lastFocusRequestId && focusRiderId && focusTarget) {
+      lastFocusRequestId = focusRequestId;
+      const track = tracks.find((item) => item.riderId === focusRiderId);
+      const trim = track ? trims[focusRiderId] : undefined;
+      const pointIdx = focusTarget === "start" ? trim?.startPointIndex : trim?.endPointIndex;
+      const point = pointIdx !== undefined && track ? track.points[pointIdx] : undefined;
+      if (point) {
+        map.setView([point.lat, point.lon], 22, { animate: true });
+      }
+    }
   };
+
+  map.on("mousedown", (event) => {
+    const phase = appStore.getState().selectionPhase;
+    if (phase !== "select_start" && phase !== "select_end") {
+      return;
+    }
+    isDrawing = true;
+    drawStart = event.latlng;
+    map.dragging.disable();
+    if (drawRect) {
+      drawRect.remove();
+    }
+    drawRect = L.rectangle(L.latLngBounds(drawStart, drawStart), {
+      color: phase === "select_start" ? "#dc2626" : "#111827",
+      weight: 2,
+      fillOpacity: 0.08
+    }).addTo(boxLayer);
+  });
+
+  map.on("mousemove", (event) => {
+    if (!isDrawing || !drawStart || !drawRect) {
+      return;
+    }
+    drawRect.setBounds(L.latLngBounds(drawStart, event.latlng));
+  });
+
+  map.on("mouseup", (event) => {
+    if (!isDrawing || !drawStart) {
+      return;
+    }
+    isDrawing = false;
+    map.dragging.enable();
+    const phase = appStore.getState().selectionPhase;
+    const bounds = L.latLngBounds(drawStart, event.latlng);
+    if (phase === "select_start") {
+      processSelectionBox(bounds, "start");
+    } else if (phase === "select_end") {
+      processSelectionBox(bounds, "end");
+    }
+    window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+  });
 
   basemapSelect.addEventListener("change", () => {
     activeBase.removeFrom(map);
