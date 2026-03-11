@@ -1,0 +1,2 @@
+# gpxcompare
+totally overkill 
