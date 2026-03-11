@@ -40,14 +40,16 @@ export function createUploadPanel(container: HTMLElement): void {
     }
 
     try {
-      for (const [index, file] of files.entries()) {
+      let nextRiderNumber = appStore.getState().tracks.length + 1;
+      for (const file of files) {
         const currentCount = appStore.getState().tracks.length;
-        if (currentCount >= MAX_FILES) {
+        if (currentCount >= MAX_FILES || nextRiderNumber > MAX_FILES) {
           break;
         }
-        const track = await parseGpxFile(file, riderId(currentCount + index));
+        const track = await parseGpxFile(file, riderId(nextRiderNumber - 1));
         const warnings = validateTrack(track);
         appStore.getState().addTrack(track, warnings);
+        nextRiderNumber += 1;
       }
       window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
     } catch (error) {

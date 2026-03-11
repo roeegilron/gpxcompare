@@ -1,6 +1,7 @@
 import L from "leaflet";
 import { appStore } from "../app/store";
-import type { RiderTrack } from "../types/gpx";
+import type { RiderTrack, RiderTrim } from "../types/gpx";
+import type { ReferenceRoute } from "../types/route";
 
 const riderColors = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#a855f7"];
 
@@ -43,16 +44,29 @@ function markerStep(mode: PointMode): number {
 
 function renderTrackLayers(
   tracks: RiderTrack[],
+  trims: Record<string, RiderTrim>,
+  referenceRoute: ReferenceRoute | undefined,
+  selectedPoint: { riderId: string; pointIndex: number } | undefined,
   map: L.Map,
   trackLayer: L.LayerGroup,
   pointLayer: L.LayerGroup,
+  routeLayer: L.LayerGroup,
   showTracks: boolean,
   pointMode: PointMode
 ): void {
   trackLayer.clearLayers();
   pointLayer.clearLayers();
+  routeLayer.clearLayers();
 
   const bounds = L.latLngBounds([]);
+  if (referenceRoute && referenceRoute.coordinates.length >= 2) {
+    const routeLatLngs = referenceRoute.coordinates.map(([lon, lat]) => L.latLng(lat, lon));
+    L.polyline(routeLatLngs, { color: "#111827", weight: 4, opacity: 0.85, dashArray: "6,6" }).addTo(
+      routeLayer
+    );
+    routeLatLngs.forEach((latLng) => bounds.extend(latLng));
+  }
+
   tracks.forEach((track, trackIndex) => {
     const color = riderColors[trackIndex % riderColors.length] ?? "#111827";
     const latLngs = track.points.map((p) => L.latLng(p.lat, p.lon));
@@ -60,6 +74,34 @@ function renderTrackLayers(
 
     if (showTracks && latLngs.length >= 2) {
       L.polyline(latLngs, { color, weight: 3, opacity: 0.9 }).addTo(trackLayer);
+    }
+
+    const trim = trims[track.riderId];
+    if (trim) {
+      const startPoint = track.points[trim.startPointIndex];
+      const endPoint = track.points[trim.endPointIndex];
+      if (startPoint) {
+        L.circleMarker([startPoint.lat, startPoint.lon], {
+          radius: 6,
+          color,
+          weight: 2,
+          fillColor: "#ffffff",
+          fillOpacity: 1
+        })
+          .bindTooltip(`${track.riderId} trim start #${trim.startPointIndex}`)
+          .addTo(trackLayer);
+      }
+      if (endPoint) {
+        L.circleMarker([endPoint.lat, endPoint.lon], {
+          radius: 6,
+          color,
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 1
+        })
+          .bindTooltip(`${track.riderId} trim end #${trim.endPointIndex}`)
+          .addTo(trackLayer);
+      }
     }
 
     const step = markerStep(pointMode);
@@ -71,7 +113,10 @@ function renderTrackLayers(
         return;
       }
       const marker = L.circleMarker([point.lat, point.lon], {
-        radius: 2.8,
+        radius:
+          selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === point.pointIndex
+            ? 5
+            : 2.8,
         color,
         fillColor: color,
         fillOpacity: 0.8,
@@ -80,6 +125,10 @@ function renderTrackLayers(
       marker.bindTooltip(
         `${track.riderId} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
       );
+      marker.on("click", () => {
+        appStore.getState().setSelectedPoint({ riderId: track.riderId, pointIndex: point.pointIndex });
+        window.dispatchEvent(new CustomEvent("gpxcompare:state-changed"));
+      });
       marker.addTo(pointLayer);
     });
   });
@@ -150,11 +199,24 @@ export function initMap(container: HTMLElement): void {
 
   const trackLayer = L.layerGroup().addTo(map);
   const pointLayer = L.layerGroup().addTo(map);
+  const routeLayer = L.layerGroup().addTo(map);
 
   const rerender = (): void => {
+    const { tracks, trims, referenceRoute, selectedPoint } = appStore.getState();
     const showTracks = showTracksInput.checked;
     const mode = (pointModeInput.value as PointMode) ?? "sampled";
-    renderTrackLayers(appStore.getState().tracks, map, trackLayer, pointLayer, showTracks, mode);
+    renderTrackLayers(
+      tracks,
+      trims,
+      referenceRoute,
+      selectedPoint,
+      map,
+      trackLayer,
+      pointLayer,
+      routeLayer,
+      showTracks,
+      mode
+    );
   };
 
   basemapSelect.addEventListener("change", () => {
@@ -165,4 +227,5 @@ export function initMap(container: HTMLElement): void {
   showTracksInput.addEventListener("change", rerender);
   pointModeInput.addEventListener("change", rerender);
   window.addEventListener("gpxcompare:state-changed", rerender);
+  rerender();
 }

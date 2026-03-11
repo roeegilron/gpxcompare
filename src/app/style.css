@@ -52,6 +52,17 @@ body {
   margin-top: 8px;
 }
 
+.trim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.trim-controls button {
+  font-size: 12px;
+}
+
 input[type="file"] {
   display: block;
   margin-bottom: 8px;
@@ -60,4 +71,9 @@ input[type="file"] {
 #upload-error {
   color: #b91c1c;
   min-height: 1.2em;
+}
+
+#route-status {
+  margin-top: 8px;
+  color: #1f2937;
 }
