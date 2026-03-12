@@ -61,6 +61,7 @@ function pinIcon(label: "S" | "E", color: string): L.DivIcon {
 function renderTrackLayers(
   tracks: RiderTrack[],
   trims: Record<string, RiderTrim>,
+  riderSelection: Record<string, { startSelected: boolean; endSelected: boolean }>,
   riderSettings: Record<string, { name: string; color: string }>,
   referenceRoute: ReferenceRoute | undefined,
   selectedPoint: { riderId: string; pointIndex: number } | undefined,
@@ -70,6 +71,7 @@ function renderTrackLayers(
   boxLayer: L.LayerGroup,
   pinLayer: L.LayerGroup,
   showTracks: boolean,
+  showOnlyTrimmed: boolean,
   pointMode: PointMode,
   startBoxBounds?: L.LatLngBounds,
   endBoxBounds?: L.LatLngBounds,
@@ -101,25 +103,52 @@ function renderTrackLayers(
     const settings = riderSettings[track.riderId];
     const riderName = settings?.name ?? track.riderId;
     const color = settings?.color ?? "#3b82f6";
-    const latLngs = track.points.map((p) => L.latLng(p.lat, p.lon));
+    const trim = trims[track.riderId];
+    const selection = riderSelection[track.riderId];
+    const hasSelectedSegment = selection?.startSelected && selection?.endSelected && trim;
+    const startIdx = trim ? trim.startPointIndex : 0;
+    const endIdx = trim ? trim.endPointIndex : Math.max(0, track.points.length - 1);
+    const pointsForDisplay =
+      showOnlyTrimmed && hasSelectedSegment
+        ? track.points.slice(startIdx, endIdx + 1)
+        : track.points;
+    const latLngs = pointsForDisplay.map((p) => L.latLng(p.lat, p.lon));
 
     if (showTracks && latLngs.length >= 2) {
       L.polyline(latLngs, { color, weight: 3, opacity: 0.9 }).addTo(trackLayer);
     }
 
-    const trim = trims[track.riderId];
     if (trim) {
       const startPoint = track.points[trim.startPointIndex];
       const endPoint = track.points[trim.endPointIndex];
       if (startPoint) {
+        const { startPin } = appStore.getState();
+        if (startPin) {
+          L.polyline(
+            [
+              [startPin.lat, startPin.lon],
+              [startPoint.lat, startPoint.lon]
+            ],
+            {
+              color,
+              weight: 2,
+              dashArray: "4,4",
+              opacity: 0.9
+            }
+          ).addTo(trackLayer);
+        }
         L.circleMarker([startPoint.lat, startPoint.lon], {
-          radius: 6,
+          radius: 10,
           color,
-          weight: 2,
+          weight: 3,
           fillColor: "#ffffff",
           fillOpacity: 1
         })
-          .bindTooltip(`${riderName} trim start #${trim.startPointIndex}`)
+          .bindTooltip(`${riderName} START #${trim.startPointIndex}`, {
+            permanent: true,
+            direction: "left",
+            className: "start-point-label"
+          })
           .addTo(trackLayer);
       }
       if (endPoint) {
@@ -158,12 +187,13 @@ function renderTrackLayers(
     if (step === 0) {
       return;
     }
-    track.points.forEach((point, idx) => {
+    pointsForDisplay.forEach((point, idx) => {
+      const absoluteIdx = point.pointIndex ?? (showOnlyTrimmed && hasSelectedSegment ? startIdx + idx : idx);
       if (idx % step !== 0) {
         return;
       }
       const active =
-        selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === point.pointIndex;
+        selectedPoint?.riderId === track.riderId && selectedPoint.pointIndex === absoluteIdx;
       const startTime = trim ? track.points[trim.startPointIndex]?.timeMs : undefined;
       const elapsedFromStartMs =
         startTime !== undefined && point.timeMs !== undefined ? point.timeMs - startTime : undefined;
@@ -175,14 +205,14 @@ function renderTrackLayers(
         weight: active ? 3 : 1
       });
       marker.bindTooltip(
-        `${riderName} #${point.pointIndex}<br/>${point.time ?? "no-time"}<br/>elapsed from start: ${
+        `${riderName} #${absoluteIdx}<br/>${point.time ?? "no-time"}<br/>elapsed from start: ${
           elapsedFromStartMs !== undefined
             ? `${Math.round(elapsedFromStartMs)} ms (${(elapsedFromStartMs / 1000).toFixed(3)}s)`
             : "--"
         }<br/>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}`
       );
       marker.on("click", () => {
-        onPointClick?.(track.riderId, point.pointIndex);
+        onPointClick?.(track.riderId, absoluteIdx);
       });
       marker.addTo(pointLayer);
     });
@@ -240,6 +270,10 @@ export function initMap(container: HTMLElement): void {
           <option value="all" selected>All points</option>
         </select>
       </label>
+      <label>
+        <input id="trimmed-only" type="checkbox" checked />
+        Show only selected segment
+      </label>
     </div>
     <div id="map-canvas"></div>
     <div class="map-controls">
@@ -255,6 +289,7 @@ export function initMap(container: HTMLElement): void {
   const basemapSelect = mapBox.querySelector<HTMLSelectElement>("#basemap-select");
   const showTracksInput = mapBox.querySelector<HTMLInputElement>("#show-tracks");
   const pointModeInput = mapBox.querySelector<HTMLSelectElement>("#point-mode");
+  const trimmedOnlyInput = mapBox.querySelector<HTMLInputElement>("#trimmed-only");
   const modeNavBtn = mapBox.querySelector<HTMLButtonElement>("#mode-nav");
   const modeStartBtn = mapBox.querySelector<HTMLButtonElement>("#mode-start");
   const modeEndBtn = mapBox.querySelector<HTMLButtonElement>("#mode-end");
@@ -263,6 +298,7 @@ export function initMap(container: HTMLElement): void {
     !canvas ||
     !basemapSelect ||
     !showTracksInput ||
+    !trimmedOnlyInput ||
     !pointModeInput ||
     !modeNavBtn ||
     !modeStartBtn ||
@@ -363,6 +399,7 @@ export function initMap(container: HTMLElement): void {
     const {
       tracks,
       trims,
+      riderSelection,
       riderSettings,
       referenceRoute,
       selectedPoint,
@@ -378,6 +415,7 @@ export function initMap(container: HTMLElement): void {
     renderTrackLayers(
       tracks,
       trims,
+      riderSelection,
       riderSettings,
       referenceRoute,
       selectedPoint,
@@ -387,6 +425,7 @@ export function initMap(container: HTMLElement): void {
       boxLayer,
       pinLayer,
       showTracks,
+      trimmedOnlyInput.checked,
       mode,
       startBoxBounds,
       endBoxBounds,
@@ -476,6 +515,7 @@ export function initMap(container: HTMLElement): void {
     activeBase.addTo(map);
   });
   showTracksInput.addEventListener("change", rerender);
+  trimmedOnlyInput.addEventListener("change", rerender);
   pointModeInput.addEventListener("change", rerender);
   modeNavBtn.addEventListener("click", () => {
     interactionMode = "navigate";

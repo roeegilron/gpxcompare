@@ -89,8 +89,32 @@ body {
 
 .rider-card {
   border-top: 1px solid #e5e7eb;
-  padding-top: 8px;
-  margin-top: 8px;
+  padding-top: 6px;
+  margin-top: 6px;
+}
+
+#rider-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 8px 12px;
+}
+
+.rider-card-header {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.rider-card-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.rider-meta {
+  font-size: 12px;
+  color: #4b5563;
 }
 
 .rider-edit-row {
@@ -98,7 +122,7 @@ body {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .rider-edit-row label {
@@ -115,12 +139,42 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 8px 0;
+  margin: 4px 0;
 }
 
 .trim-controls button {
   font-size: 11px;
   padding: 3px 6px;
+}
+
+.trim-controls.compact button {
+  min-width: 42px;
+}
+
+.rider-status-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.rider-warning-row {
+  font-size: 11px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.start-point-label,
+.end-point-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #111827;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d1d5db;
 }
 
 .compare-grid {
@@ -158,10 +212,3 @@ input[type="file"] {
   font-size: 12px;
 }
 
-.end-point-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #111827;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #d1d5db;
-}

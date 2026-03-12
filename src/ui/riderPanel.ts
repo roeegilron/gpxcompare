@@ -47,15 +47,19 @@ export function createRiderPanel(container: HTMLElement): void {
         const selectedForRider =
           selectedPoint?.riderId === track.riderId ? selectedPoint.pointIndex : undefined;
         const riderWarnings = warnings[track.riderId] ?? [];
-        const warningHtml =
+        const warningText =
           riderWarnings.length === 0
-            ? "<li>None</li>"
-            : riderWarnings.map((w) => `<li>${w.message}</li>`).join("");
+            ? "none"
+            : riderWarnings.map((w) => w.message).join(" | ");
         return `
           <article class="rider-card">
-            <h3>${escapeHtml(displayName)}</h3>
-            <p><strong>File:</strong> ${escapeHtml(track.fileName)}</p>
-            <p><strong>Rider ID:</strong> ${escapeHtml(track.riderId)}</p>
+            <div class="rider-card-header">
+              <h3>${escapeHtml(displayName)}</h3>
+              <span class="rider-meta">${escapeHtml(track.fileName)}</span>
+              <span class="rider-meta">pts: ${track.points.length}</span>
+              <span class="rider-meta">time: ${segmentTime}</span>
+              <span class="rider-meta">${routeNeedsRebuild ? "needs rebuild" : "ready"}</span>
+            </div>
             <div class="rider-edit-row">
               <label>
                 Name
@@ -85,31 +89,26 @@ export function createRiderPanel(container: HTMLElement): void {
                 />
               </label>
             </div>
-            <p><strong>Points:</strong> ${track.points.length}</p>
-            <p><strong>First timestamp:</strong> ${track.points[0]?.time ?? "N/A"}</p>
-            <p><strong>Trim start:</strong> ${trim?.startPointIndex ?? 0}</p>
-            <p><strong>Trim end:</strong> ${trim?.endPointIndex ?? Math.max(0, track.points.length - 1)}</p>
-            <p><strong>Segment time:</strong> ${segmentTime} ${routeNeedsRebuild ? "(route needs rebuild)" : ""}</p>
-            <p><strong>Start selected:</strong> ${selection?.startSelected ? "yes" : "no"}</p>
-            <p><strong>End selected:</strong> ${selection?.endSelected ? "yes" : "no"}</p>
-            <p><strong>Selected point:</strong> ${selectedForRider ?? "none (click a map point)"}</p>
-            <div class="trim-controls">
-              <button data-action="zoom-start" data-rider="${track.riderId}" type="button">Zoom Start</button>
-              <button data-action="zoom-end" data-rider="${track.riderId}" type="button">Zoom End</button>
+            <div class="rider-status-row">
+              <span>S: ${trim?.startPointIndex ?? 0} (${selection?.startSelected ? "set" : "unset"})</span>
+              <span>E: ${trim?.endPointIndex ?? Math.max(0, track.points.length - 1)} (${selection?.endSelected ? "set" : "unset"})</span>
+              <span>Selected: ${selectedForRider ?? "none"}</span>
             </div>
-            <div class="trim-controls">
-              <button data-action="start-minus-5" data-rider="${track.riderId}" type="button">Start -5</button>
-              <button data-action="start-minus" data-rider="${track.riderId}" type="button">Start -1</button>
-              <button data-action="start-plus" data-rider="${track.riderId}" type="button">Start +1</button>
-              <button data-action="start-plus-5" data-rider="${track.riderId}" type="button">Start +5</button>
+            <div class="trim-controls compact">
+              <button data-action="zoom-start" data-rider="${track.riderId}" type="button">Zoom S</button>
+              <button data-action="start-minus-5" data-rider="${track.riderId}" type="button">S-5</button>
+              <button data-action="start-minus" data-rider="${track.riderId}" type="button">S-1</button>
+              <button data-action="start-plus" data-rider="${track.riderId}" type="button">S+1</button>
+              <button data-action="start-plus-5" data-rider="${track.riderId}" type="button">S+5</button>
+              <button data-action="zoom-end" data-rider="${track.riderId}" type="button">Zoom E</button>
+              <button data-action="end-minus-5" data-rider="${track.riderId}" type="button">E-5</button>
+              <button data-action="end-minus" data-rider="${track.riderId}" type="button">E-1</button>
+              <button data-action="end-plus" data-rider="${track.riderId}" type="button">E+1</button>
+              <button data-action="end-plus-5" data-rider="${track.riderId}" type="button">E+5</button>
             </div>
-            <div class="trim-controls">
-              <button data-action="end-minus-5" data-rider="${track.riderId}" type="button">End -5</button>
-              <button data-action="end-minus" data-rider="${track.riderId}" type="button">End -1</button>
-              <button data-action="end-plus" data-rider="${track.riderId}" type="button">End +1</button>
-              <button data-action="end-plus-5" data-rider="${track.riderId}" type="button">End +5</button>
+            <div class="rider-warning-row">
+              <strong>Warnings:</strong> ${escapeHtml(warningText)}
             </div>
-            <ul>${warningHtml}</ul>
           </article>
         `;
       })

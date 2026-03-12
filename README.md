@@ -2,7 +2,7 @@
 
 Segment-aligned, point-inspectable GPX comparison workbench for high-precision multi-rider run analysis.
 
-This project is a browser-only tool (GitHub Pages deploy) for comparing GPX tracks using box-selected start/end zones, draggable S/E pins, and a shared averaged reference route.
+This project is a browser-only tool (GitHub Pages deploy) for comparing GPX tracks using box-selected start/end zones, draggable S/E pins, and timing-first segment normalization.
 
 ## What This Repo Does
 
@@ -11,7 +11,7 @@ This project is a browser-only tool (GitHub Pages deploy) for comparing GPX trac
 - Enforce a strict workflow:
   1. draw start box and place/move S pin
   2. draw end box and place/move E pin
-  3. build consensus reference route
+  3. build timing comparison
 - Build timing comparison by trimming each rider to nearest start/end pin matches.
 - Compare riders against a selected base rider with:
   - gap chart (time gap over elapsed-time axis of base rider)
@@ -19,6 +19,7 @@ This project is a browser-only tool (GitHub Pages deploy) for comparing GPX trac
 - Allow rider rename/recolor and include/exclude toggles for comparison.
 - Include `Zoom to compare route` and `Lock zoom` controls for focused analysis.
 - Include map interaction buttons (`Navigate`, `Set start box`, `Set end box`) to avoid accidental draw-mode lock.
+- Include `Show only selected segment` map toggle (default ON) to hide noisy points outside the selected start/end range.
 - Include per-rider `Zoom Start` / `Zoom End` and ±1/±5 trim nudges for precise boundary tuning.
 - Show live segment time per rider while adjusting trim points.
 - Show table rows sorted by current leader (fastest first).
@@ -35,7 +36,8 @@ This project is a browser-only tool (GitHub Pages deploy) for comparing GPX trac
 
 ## Key UI Notes
 
-- End points are emphasized with large labeled end markers and dashed connectors from global `E` pin.
+- Start and end points are emphasized with large labeled markers and dashed connectors from global `S` / `E` pins.
+- Riders panel is compacted into dense control rows for fast multi-rider start/end nudging.
 - Comparison table is sticky on the right side for constant visibility while adjusting controls.
 - Point tooltip shows elapsed-from-start in millisecond precision.
 
